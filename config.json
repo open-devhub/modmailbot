@@ -1,6 +1,7 @@
 {
   "guildId": "1429026875946172459",
   "clientId": "1430219756820103370",
+  "prefixes": ["m!", "M!"],
   "modmailChannelId": "1493131949399740536",
-  "moderatorRole": "1441833991798788126"
+  "moderatorRole": "1493986014270717992"
 }

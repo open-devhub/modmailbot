@@ -1,14 +1,16 @@
 import path, { join } from "path";
 import { fileURLToPath } from "url";
 import getAllFiles from "../../utils/getAllFiles.js";
+import type { Client, Message } from "discord.js";
+import config from "../../../config.json" with { type: "json" };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const prefixes = ["m!", "M!"];
+const { prefixes } = config;
 
 const COOLDOWN_SECONDS = 3;
 const USER_COOLDOWNS = new Map();
 
-export default async (client, message) => {
+export default async (client: Client, message: Message) => {
   if (!message || !message.guild || message.author?.bot) return;
 
   const now = Date.now();
@@ -29,7 +31,7 @@ export default async (client, message) => {
     );
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
+    const commandName = args?.shift()?.toLowerCase();
     const prefixCommandsPath = join(__dirname, "..", "..", "commands");
 
     const prefixCommandsCategories = getAllFiles(prefixCommandsPath, true);
@@ -50,7 +52,7 @@ export default async (client, message) => {
       if (String(command.name).toLowerCase() === commandName) return true;
       if (Array.isArray(command.aliases)) {
         return command.aliases
-          .map((a) => String(a).toLowerCase())
+          .map((a: string) => String(a).toLowerCase())
           .includes(commandName);
       }
       return false;
@@ -59,7 +61,7 @@ export default async (client, message) => {
 
     if (commandObject.permissionsRequired?.length) {
       for (const permission of commandObject.permissionsRequired) {
-        if (!message.member.permissions.has(permission)) {
+        if (!message?.member?.permissions.has(permission)) {
           message.reply("Not enough permissions to run this command.");
           return;
         }

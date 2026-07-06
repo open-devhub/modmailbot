@@ -1,5 +1,5 @@
-import { PermissionFlagsBits, EmbedBuilder } from "discord.js";
-import getConfig from "../../utils/getConfig.js";
+import { PermissionFlagsBits, EmbedBuilder, Client, Message } from "discord.js";
+import config from "../../../config.json" with { type: "json" };
 import { modmailCache } from "../../events/messageCreate/modmailSessions.js";
 
 export default {
@@ -8,10 +8,8 @@ export default {
   permissionRequired: PermissionFlagsBits.ManageThreads,
   aliases: ["close", "endmail"],
 
-  async callback(client, message) {
+  async callback(client: Client, message: Message) {
     try {
-      const config = await getConfig();
-
       if (
         !message.channel.isThread() ||
         message.channel.parentId !== config.modmailChannelId
@@ -24,8 +22,13 @@ export default {
       const thread = message.channel;
 
       const parentMessage = await thread.fetchStarterMessage();
+      if (!parentMessage) return;
+
       const embed = parentMessage.embeds[0];
-      const userId = embed.footer.text.split("uid: ")[1];
+      if (!embed?.footer?.text) return;
+
+      const userId = embed.footer.text;
+      if (!userId) return;
 
       modmailCache.delete(userId);
 
@@ -59,8 +62,13 @@ export default {
     } catch (err) {
       console.error("Closemail error:", err);
 
-      if (message.channel) {
-        message.channel
+      const fallbackChannel = message.channel;
+      if (
+        fallbackChannel &&
+        "send" in fallbackChannel &&
+        typeof fallbackChannel.send === "function"
+      ) {
+        await fallbackChannel
           .send("Failed to close modmail thread.")
           .catch(() => null);
       }

@@ -4,29 +4,40 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ActionRowBuilder,
+  AttachmentBuilder,
+  type Client,
+  type Message,
+  type TextChannel,
+  type ThreadChannel,
+  type WebhookMessageCreateOptions,
 } from "discord.js";
-import getConfig from "../../utils/getConfig.js";
 import crypto from "crypto";
+import config from "../../../config.json" with { type: "json" };
+import ucid from "unique-custom-id";
 
-export const modmailCache = new Map();
+export const modmailCache = new Map<string, string>();
 
-export default async (client, message) => {
+export default async (client: Client, message: Message) => {
   if (message.author.bot) return;
   if (message.channel.type !== ChannelType.DM) return;
 
   try {
-    const config = await getConfig();
-
     const parent = await client.channels
       .fetch(config.modmailChannelId)
       .catch(() => null);
 
-    if (!parent) return;
+    if (!parent || !parent.isTextBased()) return;
 
-    let thread = modmailCache.get(message.author.id) || null;
+    const textParent = parent as TextChannel;
 
-    if (thread) {
-      thread = await client.channels.fetch(thread).catch(() => null);
+    const threadId = modmailCache.get(message.author.id) || null;
+    let thread: ThreadChannel | null = null;
+
+    if (threadId) {
+      const fetchedThread = await client.channels
+        .fetch(threadId)
+        .catch(() => null);
+      if (fetchedThread?.isThread()) thread = fetchedThread;
       if (!thread || thread.archived || thread.locked) {
         modmailCache.delete(message.author.id);
         thread = null;
@@ -46,22 +57,22 @@ export default async (client, message) => {
 
     if (message.attachments.size > 0) {
       const file = message.attachments.first();
-      if (file.contentType?.startsWith("image/")) preview.setImage(file.url);
-      else preview.addFields({ name: "Attachment", value: file.url });
+      if (file) {
+        if (file.contentType?.startsWith("image/")) preview.setImage(file.url);
+        else preview.addFields({ name: "Attachment", value: file.url });
+      }
     }
 
     if (!thread) {
-      const row = new ActionRowBuilder().addComponents(
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId("modmail_confirm")
           .setLabel("Continue")
-          .setEmoji("✅")
-          .setStyle(ButtonStyle.Secondary),
+          .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId("modmail_cancel")
           .setLabel("Cancel")
-          .setEmoji("❌")
-          .setStyle(ButtonStyle.Secondary),
+          .setStyle(ButtonStyle.Danger),
       );
 
       const prompt = await message.reply({
@@ -87,7 +98,7 @@ export default async (client, message) => {
           });
         }
 
-        const id = crypto.randomBytes(4).toString("hex");
+        const id = ucid.format("short") as string;
 
         const threadEmbed = new EmbedBuilder()
           .setTitle("New Modmail")
@@ -103,11 +114,11 @@ export default async (client, message) => {
               inline: true,
             },
           )
-          .setFooter({ text: `uid: ${message.author.id}` })
+          .setFooter({ text: message.author.id })
           .setTimestamp();
 
-        const threadMsg = await parent.send({
-          content: `<@&${config.moderatorRole}> new modmail by <@${message.author.id}>\n-# #${id}`,
+        const threadMsg = await textParent.send({
+          content: `<@&${config.moderatorRole}> #${id}`,
           embeds: [threadEmbed],
         });
 
@@ -118,7 +129,7 @@ export default async (client, message) => {
 
         modmailCache.set(message.author.id, thread.id);
 
-        await sendToThread(client, parent, thread, message);
+        await sendToThread(client, textParent, thread, message);
 
         await prompt.edit({
           content: "",
@@ -157,30 +168,38 @@ export default async (client, message) => {
       return;
     }
 
-    await sendToThread(client, parent, thread, message);
+    await sendToThread(client, textParent, thread as ThreadChannel, message);
   } catch (err) {
     console.error(err);
   }
 };
 
-async function sendToThread(client, parent, thread, message) {
+async function sendToThread(
+  client: Client,
+  parent: TextChannel,
+  thread: ThreadChannel,
+  message: Message,
+) {
   const webhooks = await parent.fetchWebhooks();
 
   const webhook =
     webhooks.find(
-      (w) => w.owner?.id === client.user.id && w.name === "modmail",
+      (w) => w.owner?.id === client.user?.id && w.name === "modmail",
     ) || (await parent.createWebhook({ name: "modmail" }));
 
-  const payload = {
+  const payload: WebhookMessageCreateOptions & { threadId: string } = {
     username: message.author.username,
     avatarURL: message.author.displayAvatarURL(),
-    content: message.content || null,
     threadId: thread.id,
   };
 
+  if (message.content) {
+    payload.content = message.content;
+  }
+
   const attachments = [...message.attachments.values()];
   if (attachments.length) {
-    payload.files = attachments.map((a) => a.url);
+    payload.files = attachments.map((a) => new AttachmentBuilder(a.url));
   }
 
   await webhook.send(payload);

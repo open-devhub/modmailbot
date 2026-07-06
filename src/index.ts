@@ -12,6 +12,12 @@ const client = new Client({
     IntentsBitField.Flags.MessageContent,
   ],
   partials: [Partials.Channel],
+  allowedMentions: {
+    parse: [],
+    repliedUser: false,
+    roles: [],
+    users: [],
+  },
 });
 
 (async () => {
